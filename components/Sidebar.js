@@ -29,17 +29,35 @@ const Sidebar = ({
   useEffect(() => {
     try {
       if (functionInput.trim()) {
-        // Test if function is valid
-        const testX = 0;
-        evaluateFunction(functionInput, [testX]);
-        setFunctionPreview(functionInput);
-        setErrorMessage('');
+        // Only validate if there's at least 1 character
+        if (functionInput.length > 0) {
+          // Test if function is valid using a small array of values
+          const testXValues = [0, 1, -1];
+          try {
+            evaluateFunction(functionInput, testXValues);
+            setFunctionPreview(functionInput);
+            setErrorMessage('');
+          } catch (err) {
+            console.log('Function validation error:', err);
+            setFunctionPreview('');
+            // Extract the most useful part of the error message
+            const errorMsg = err.message.includes('Invalid function:') 
+              ? err.message 
+              : `Invalid function: ${err.message}`;
+            setErrorMessage(errorMsg);
+          }
+        } else {
+          setFunctionPreview('');
+          setErrorMessage('');
+        }
       } else {
         setFunctionPreview('');
+        setErrorMessage('');
       }
     } catch (err) {
+      console.error('Unexpected error in function preview:', err);
       setFunctionPreview('');
-      setErrorMessage(`Invalid function: ${err.message}`);
+      setErrorMessage(`Error: ${err.message}`);
     }
   }, [functionInput]);
 
@@ -50,16 +68,35 @@ const Sidebar = ({
     }
 
     try {
-      // Test if function is valid
-      const testX = 0;
-      evaluateFunction(functionInput, [testX]);
-      
-      // If we get here, function is valid
-      setErrorMessage('');
-      onFunctionSubmit(functionInput);
-      setIsTestMode(true);
+      // Test if function is valid with multiple test values
+      const testValues = [-1, 0, 1];
+      try {
+        // First validate the function with test values
+        const results = evaluateFunction(functionInput, testValues);
+        
+        // Check if we got valid results
+        const validResults = results.filter(r => r !== null && !isNaN(r) && isFinite(r));
+        if (validResults.length === 0) {
+          setErrorMessage('Function produces invalid results for all test values.');
+          return;
+        }
+        
+        // If we get here, function is valid
+        setErrorMessage('');
+        onFunctionSubmit(functionInput);
+        setIsTestMode(true);
+        console.log('Function submitted successfully:', functionInput);
+      } catch (evalError) {
+        console.error('Function evaluation error:', evalError);
+        // Provide a more user-friendly error message
+        const errorMsg = evalError.message.includes('Invalid function:') 
+          ? evalError.message 
+          : `Invalid function: ${evalError.message}`;
+        setErrorMessage(errorMsg);
+      }
     } catch (err) {
-      setErrorMessage(`Invalid function: ${err.message}`);
+      console.error('Unexpected error in function submission:', err);
+      setErrorMessage(`Error: ${err.message}`);
     }
   };
 
@@ -89,20 +126,53 @@ const Sidebar = ({
     
     // Calculate score
     try {
+      // Generate evenly spaced x values for evaluation
       const numPoints = 100;
       const xStep = (xRange[1] - xRange[0]) / numPoints;
       const xValues = Array.from({ length: numPoints + 1 }, (_, i) => xRange[0] + i * xStep);
       
-      const actualValues = evaluateFunction(currentFunction, xValues);
+      console.log("Evaluating actual function:", currentFunction);
+      
+      // Safely evaluate the actual function with more robust error handling
+      let actualValues;
+      try {
+        actualValues = evaluateFunction(currentFunction, xValues);
+        
+        // Count valid results
+        const validCount = actualValues.filter(v => v !== null && !isNaN(v) && isFinite(v)).length;
+        console.log(`Function evaluation produced ${validCount}/${actualValues.length} valid points`);
+        
+        if (validCount === 0) {
+          throw new Error("Function could not be evaluated for any x values in the range");
+        }
+      } catch (funcError) {
+        console.error("Function evaluation error:", funcError);
+        setErrorMessage(`Error evaluating function: ${funcError.message}`);
+        return;
+      }
+      
+      // Interpolate user drawn points to match x values
       const userValues = interpolatePoints(drawnPoints, xValues);
+      console.log(`Interpolated ${userValues.filter(v => v !== null).length}/${userValues.length} user values`);
       
-      // Calculate MSE and log for debugging
-      const mse = calculateMSE(userValues, actualValues);
-      console.log("MSE:", mse, "Values length:", actualValues.length, userValues.length);
+      // Calculate MSE with error handling
+      let mse;
+      try {
+        mse = calculateMSE(userValues, actualValues);
+        console.log("MSE calculated:", mse);
+        
+        if (isNaN(mse) || !isFinite(mse)) {
+          throw new Error("Could not calculate a valid score");
+        }
+      } catch (mseError) {
+        console.error("MSE calculation error:", mseError);
+        setErrorMessage(`Error calculating score: ${mseError.message}`);
+        return;
+      }
       
-      // Scale to a 0-100 score, higher is better
+      // Scale to a 0-100 score, higher is better (with safety checks)
       const calculatedScore = Math.max(0, 100 * (1 - Math.min(1, mse / 100)));
-      console.log("Score calculated:", calculatedScore);
+      console.log("Final score calculated:", calculatedScore);
       
       setScore(calculatedScore);
       
@@ -121,8 +191,8 @@ const Sidebar = ({
       onShowActualFunction(true);
       setIsTestMode(false);
     } catch (err) {
-      console.error("Error calculating score:", err);
-      setErrorMessage(`Error calculating score: ${err.message}`);
+      console.error("Unexpected error in score calculation:", err);
+      setErrorMessage(`Error: ${err.message}`);
     }
   };
 

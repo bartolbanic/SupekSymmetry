@@ -21,8 +21,34 @@ export const evaluateFunction = (functionStr, xValues) => {
     // Log for debugging
     console.log(`Evaluating function "${functionStr}" for ${xValues.length} x values`);
     
+    // Pre-process the function string to ensure it's properly formatted
+    // Replace common math functions with their math.js equivalents if needed
+    let processedFunctionStr = functionStr
+      .replace(/\bsin\b/g, 'sin')
+      .replace(/\bcos\b/g, 'cos')
+      .replace(/\btan\b/g, 'tan')
+      .replace(/\basin\b/g, 'asin')
+      .replace(/\bacos\b/g, 'acos')
+      .replace(/\batan\b/g, 'atan')
+      .replace(/\bsqrt\b/g, 'sqrt')
+      .replace(/\babs\b/g, 'abs')
+      .replace(/\blog\b/g, 'log')
+      .replace(/\bexp\b/g, 'exp')
+      .replace(/\^/g, '**'); // Replace ^ with ** for exponentiation
+    
+    console.log(`Processed function string: "${processedFunctionStr}"`);
+    
+    // Validate the function by evaluating it at x=0 before compiling
+    try {
+      const scope = { x: 0 };
+      math.evaluate(processedFunctionStr, scope);
+    } catch (validationError) {
+      console.error('Function validation error:', validationError);
+      throw new Error(`Cannot parse function: ${validationError.message}`);
+    }
+    
     // Compile the function for efficiency
-    const compiledFunction = math.compile(functionStr);
+    const compiledFunction = math.compile(processedFunctionStr);
     
     // Evaluate for each x value
     const results = xValues.map(x => {
@@ -32,7 +58,8 @@ export const evaluateFunction = (functionStr, xValues) => {
           x = 0;
         }
         
-        const result = compiledFunction.evaluate({ x });
+        const scope = { x: x };
+        const result = compiledFunction.evaluate(scope);
         
         // Check if result is a valid number
         if (isNaN(result) || !isFinite(result)) {
