@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import styles from '../styles/Sidebar.module.css';
 import { calculateMSE, interpolatePoints, evaluateFunction } from '../utils/mathFunctions';
 
@@ -17,12 +17,31 @@ const Sidebar = ({
   setHistory
 }) => {
   const [functionInput, setFunctionInput] = useState('');
+  const [functionPreview, setFunctionPreview] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [xMin, setXMin] = useState(xRange[0]);
   const [xMax, setXMax] = useState(xRange[1]);
   const [yMin, setYMin] = useState(yRange[0]);
   const [yMax, setYMax] = useState(yRange[1]);
   const [score, setScore] = useState(null);
+  
+  // Preview function as it's typed
+  useEffect(() => {
+    try {
+      if (functionInput.trim()) {
+        // Test if function is valid
+        const testX = 0;
+        evaluateFunction(functionInput, [testX]);
+        setFunctionPreview(functionInput);
+        setErrorMessage('');
+      } else {
+        setFunctionPreview('');
+      }
+    } catch (err) {
+      setFunctionPreview('');
+      setErrorMessage(`Invalid function: ${err.message}`);
+    }
+  }, [functionInput]);
 
   const handleFunctionSubmit = () => {
     if (!functionInput.trim()) {
@@ -132,6 +151,12 @@ const Sidebar = ({
                 onChange={(e) => setFunctionInput(e.target.value)}
                 className={styles.input}
               />
+              {functionPreview && (
+                <div className={styles.functionPreview}>
+                  <span>Current function: </span>
+                  <span className={styles.previewText}>{functionPreview}</span>
+                </div>
+              )}
               <button onClick={handleFunctionSubmit} className={styles.button}>
                 Test Function
               </button>
