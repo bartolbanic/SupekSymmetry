@@ -82,7 +82,8 @@ export default function Home() {
             yRange={yRange}
             functionString={currentFunction}
             onDrawingComplete={(points) => {
-              // Additional processing if needed
+              console.log("Drawing completed with", points.length, "points");
+              // Callback after drawing is completed (optional processing)
             }}
             showActualFunction={showActualFunction}
             drawnPoints={drawnPoints}

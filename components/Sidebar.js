@@ -77,9 +77,13 @@ const Sidebar = ({
       const actualValues = evaluateFunction(currentFunction, xValues);
       const userValues = interpolatePoints(drawnPoints, xValues);
       
+      // Calculate MSE and log for debugging
       const mse = calculateMSE(userValues, actualValues);
+      console.log("MSE:", mse, "Values length:", actualValues.length, userValues.length);
+      
       // Scale to a 0-100 score, higher is better
       const calculatedScore = Math.max(0, 100 * (1 - Math.min(1, mse / 100)));
+      console.log("Score calculated:", calculatedScore);
       
       setScore(calculatedScore);
       
@@ -93,10 +97,12 @@ const Sidebar = ({
         }
       ]);
       
-      // Show actual function
+      // Show actual function and exit test mode
+      console.log("Showing actual function");
       onShowActualFunction(true);
       setIsTestMode(false);
     } catch (err) {
+      console.error("Error calculating score:", err);
       setErrorMessage(`Error calculating score: ${err.message}`);
     }
   };

@@ -40,20 +40,26 @@ const CoordinateSystem = ({
     const plotEl = plotRef.current;
     if (!plotEl) return;
     
-    setIsDrawing(true);
-    
     // Get plot coordinates from event
     const plotData = plotEl.getElementsByClassName('nsewdrag')[0];
     if (!plotData) return;
     
     const rect = plotData.getBoundingClientRect();
+    if (!rect) return;
+    
+    setIsDrawing(true);
+    
     const xPlotRatio = (xRange[1] - xRange[0]) / rect.width;
     const yPlotRatio = (yRange[1] - yRange[0]) / rect.height;
     
     const x = xRange[0] + (e.clientX - rect.left) * xPlotRatio;
     const y = yRange[1] - (e.clientY - rect.top) * yPlotRatio;
     
+    // Clear any previous points and start with this point
     setDrawnPoints([{ x, y }]);
+    
+    // Log for debugging
+    console.log("Mouse down at:", { x, y });
   };
 
   const handleMouseMove = (e) => {
@@ -67,17 +73,31 @@ const CoordinateSystem = ({
     if (!plotData) return;
     
     const rect = plotData.getBoundingClientRect();
+    if (!rect) return;
+    
     const xPlotRatio = (xRange[1] - xRange[0]) / rect.width;
     const yPlotRatio = (yRange[1] - yRange[0]) / rect.height;
     
     const x = xRange[0] + (e.clientX - rect.left) * xPlotRatio;
     const y = yRange[1] - (e.clientY - rect.top) * yPlotRatio;
     
+    // Add to existing points
     setDrawnPoints(prev => [...prev, { x, y }]);
+    
+    // Log for debugging
+    console.log("Mouse move, points:", drawnPoints.length + 1);
   };
 
   const handleMouseUp = () => {
-    setIsDrawing(false);
+    if (isDrawing) {
+      setIsDrawing(false);
+      console.log("Drawing completed, points:", drawnPoints.length);
+      
+      // Notify parent component if needed
+      if (drawnPoints.length > 0 && onDrawingComplete) {
+        onDrawingComplete(drawnPoints);
+      }
+    }
   };
 
   // Define plot data
