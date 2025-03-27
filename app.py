@@ -50,15 +50,15 @@ with st.sidebar:
     st.subheader("Coordinate System Range")
     col1, col2 = st.columns(2)
     with col1:
-        x_min = st.number_input("X min", value=float(st.session_state.x_range[0]), step=1.0)
+        x_min = st.number_input("X min", value=float(st.session_state.x_range[0]), format="%.2f")
     with col2:
-        x_max = st.number_input("X max", value=float(st.session_state.x_range[1]), step=1.0)
+        x_max = st.number_input("X max", value=float(st.session_state.x_range[1]), format="%.2f")
     
     col3, col4 = st.columns(2)
     with col3:
-        y_min = st.number_input("Y min", value=float(st.session_state.y_range[0]), step=1.0)
+        y_min = st.number_input("Y min", value=float(st.session_state.y_range[0]), format="%.2f")
     with col4:
-        y_max = st.number_input("Y max", value=float(st.session_state.y_range[1]), step=1.0)
+        y_max = st.number_input("Y max", value=float(st.session_state.y_range[1]), format="%.2f")
     
     # Validate ranges
     if x_min >= x_max:
@@ -124,7 +124,7 @@ else:
         x_min, x_max = st.session_state.x_range
         y_min, y_max = st.session_state.y_range
         
-        # Create the canvas with coordinate grid background
+        # Create the coordinate grid for display
         fig, ax = plt.subplots(figsize=(canvas_width/100, canvas_height/100))
         ax.grid(True)
         ax.axhline(y=0, color='k', linestyle='-', alpha=0.3)
@@ -134,24 +134,17 @@ else:
         ax.set_xlabel('x')
         ax.set_ylabel('y')
         
-        # Save the figure to use as background
+        # Save the figure to display
         fig.tight_layout()
-        
-        # Convert figure to image
-        from io import BytesIO
-        buf = BytesIO()
-        fig.savefig(buf, format="png")
-        buf.seek(0)
-        background_image = buf.getvalue()
+        st.pyplot(fig)
         plt.close(fig)
         
-        # Create the canvas
+        # Create the canvas (without background image)
         canvas_result = st_canvas(
             fill_color="rgba(255, 165, 0, 0.3)",
             stroke_width=3,
             stroke_color="#ff0000",
             background_color="#ffffff",
-            background_image=background_image,
             update_streamlit=True,
             width=canvas_width,
             height=canvas_height,
