@@ -27,10 +27,10 @@ if 'current_canvas_data' not in st.session_state:
     st.session_state.current_canvas_data = None
 
 if 'x_range' not in st.session_state:
-    st.session_state.x_range = (-10, 10)
+    st.session_state.x_range = (-10.0, 10.0)
     
 if 'y_range' not in st.session_state:
-    st.session_state.y_range = (-10, 10)
+    st.session_state.y_range = (-10.0, 10.0)
 
 # Main layout
 st.title("Mathematical Function Prediction")
@@ -50,15 +50,24 @@ with st.sidebar:
     st.subheader("Coordinate System Range")
     col1, col2 = st.columns(2)
     with col1:
-        x_min = st.number_input("X min", value=st.session_state.x_range[0])
+        x_min = st.number_input("X min", value=float(st.session_state.x_range[0]), step=1.0)
     with col2:
-        x_max = st.number_input("X max", value=st.session_state.x_range[1])
+        x_max = st.number_input("X max", value=float(st.session_state.x_range[1]), step=1.0)
     
     col3, col4 = st.columns(2)
     with col3:
-        y_min = st.number_input("Y min", value=st.session_state.y_range[0])
+        y_min = st.number_input("Y min", value=float(st.session_state.y_range[0]), step=1.0)
     with col4:
-        y_max = st.number_input("Y max", value=st.session_state.y_range[1])
+        y_max = st.number_input("Y max", value=float(st.session_state.y_range[1]), step=1.0)
+    
+    # Validate ranges
+    if x_min >= x_max:
+        st.warning("X min must be less than X max")
+        x_min = x_max - 1
+    
+    if y_min >= y_max:
+        st.warning("Y min must be less than Y max")
+        y_min = y_max - 1
     
     # Update ranges in session state
     st.session_state.x_range = (x_min, x_max)
@@ -127,6 +136,13 @@ else:
         
         # Save the figure to use as background
         fig.tight_layout()
+        
+        # Convert figure to image
+        from io import BytesIO
+        buf = BytesIO()
+        fig.savefig(buf, format="png")
+        buf.seek(0)
+        background_image = buf.getvalue()
         plt.close(fig)
         
         # Create the canvas
@@ -135,7 +151,7 @@ else:
             stroke_width=3,
             stroke_color="#ff0000",
             background_color="#ffffff",
-            background_image=fig,
+            background_image=background_image,
             update_streamlit=True,
             width=canvas_width,
             height=canvas_height,
