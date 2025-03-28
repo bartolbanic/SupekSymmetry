@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import dynamic from 'next/dynamic';
-import { evaluateFunction } from '../utils/mathFunctions';
+import { evaluateFunction, smoothPoints } from '../utils/mathFunctions';
 
 // Dynamically import Plotly to avoid SSR issues
 const Plot = dynamic(() => import('react-plotly.js'), { ssr: false });
@@ -19,6 +19,7 @@ const CoordinateSystem = ({
   const [isDrawing, setIsDrawing] = useState(false);
   const [actualFunction, setActualFunction] = useState(null);
   const [plotInstance, setPlotInstance] = useState(null);
+  const [smoothedPoints, setSmoothedPoints] = useState([]);
   
   // Calculate grid density based on range
   const calculateGridDensity = useCallback(() => {
@@ -127,8 +128,31 @@ const CoordinateSystem = ({
     console.log("Drawing completed with", drawnPoints.length, "points");
     setIsDrawing(false);
     
-    if (drawnPoints.length > 0 && onDrawingComplete) {
-      onDrawingComplete(drawnPoints);
+    // Apply smoothing and vertical line test if we have enough points
+    if (drawnPoints.length >= 3) {
+      try {
+        const smoothed = smoothPoints(drawnPoints);
+        console.log("Smoothed to", smoothed.length, "points with cubic spline");
+        setSmoothedPoints(smoothed);
+        
+        // Pass smoothed points to parent component
+        if (onDrawingComplete) {
+          onDrawingComplete(smoothed);
+        }
+      } catch (err) {
+        console.error("Error smoothing points:", err);
+        // If smoothing fails, use original points
+        setSmoothedPoints([]);
+        if (onDrawingComplete) {
+          onDrawingComplete(drawnPoints);
+        }
+      }
+    } else {
+      // If not enough points for smoothing, use original
+      setSmoothedPoints([]);
+      if (drawnPoints.length > 0 && onDrawingComplete) {
+        onDrawingComplete(drawnPoints);
+      }
     }
   }, [isDrawing, drawnPoints, onDrawingComplete]);
 
@@ -198,13 +222,23 @@ const CoordinateSystem = ({
       showlegend: false
     },
     
-    // User drawn function (if points exist)
+    // User drawn function (raw points)
     ...(drawnPoints.length > 1 ? [{
       x: drawnPoints.map(p => p.x),
       y: drawnPoints.map(p => p.y),
       mode: 'lines',
+      line: { width: 1, color: 'rgba(255, 0, 0, 0.3)', dash: 'dot' },
+      name: 'Raw Drawing',
+      showlegend: smoothedPoints.length > 0 // Only show in legend if we have smoothed points
+    }] : []),
+    
+    // Smoothed user prediction (if available)
+    ...(smoothedPoints.length > 0 ? [{
+      x: smoothedPoints.map(p => p.x),
+      y: smoothedPoints.map(p => p.y),
+      mode: 'lines',
       line: { width: 3, color: 'red' },
-      name: 'Your Prediction'
+      name: 'Your Prediction (Smoothed)'
     }] : []),
     
     // Actual function (if visible)

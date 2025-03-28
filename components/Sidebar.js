@@ -1,6 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import styles from '../styles/Sidebar.module.css';
-import { calculateMSE, interpolatePoints, evaluateFunction } from '../utils/mathFunctions';
+import { 
+  calculateMSE, 
+  calculateRMSE, 
+  calculateMAE, 
+  calculateFunctionSimilarity, 
+  interpolatePoints, 
+  evaluateFunction 
+} from '../utils/mathFunctions';
 
 const Sidebar = ({ 
   onFunctionSubmit, 
@@ -24,6 +31,48 @@ const Sidebar = ({
   const [yMin, setYMin] = useState(yRange[0]);
   const [yMax, setYMax] = useState(yRange[1]);
   const [score, setScore] = useState(null);
+  const [selectedCategory, setSelectedCategory] = useState(null);
+  
+  // Function categories
+  const functionCategories = [
+    {
+      name: 'Trigonometric',
+      functions: [
+        { name: 'Sine', expression: 'sin(x)' },
+        { name: 'Cosine', expression: 'cos(x)' },
+        { name: 'Tangent', expression: 'tan(x)' },
+        { name: 'Sine Squared', expression: 'sin(x)^2' },
+        { name: 'Cosine Squared', expression: 'cos(x)^2' }
+      ]
+    },
+    {
+      name: 'Polynomial',
+      functions: [
+        { name: 'Linear', expression: '2*x + 1' },
+        { name: 'Quadratic', expression: 'x^2 - 2*x + 1' },
+        { name: 'Cubic', expression: 'x^3 - 2*x^2 + x - 3' },
+        { name: 'Quartic', expression: 'x^4 - 3*x^2 + 2' }
+      ]
+    },
+    {
+      name: 'Exponential',
+      functions: [
+        { name: 'Exponential', expression: 'exp(x)' },
+        { name: 'Natural Log', expression: 'log(abs(x) + 0.01)' },
+        { name: 'Exponential Decay', expression: 'exp(-x)' },
+        { name: 'Sigmoid', expression: '1 / (1 + exp(-x))' }
+      ]
+    },
+    {
+      name: 'Compositions',
+      functions: [
+        { name: 'Damped Sine', expression: 'sin(x) * exp(-abs(x)/5)' },
+        { name: 'Absolute Sine', expression: 'abs(sin(x))' },
+        { name: 'Polynomial with Sine', expression: 'x^2 + sin(x)' },
+        { name: 'Wave Packet', expression: 'sin(x^2) / (1 + abs(x/5))' }
+      ]
+    }
+  ];
   
   // Preview function as it's typed
   useEffect(() => {
@@ -116,6 +165,8 @@ const Sidebar = ({
     onRangeChange([xMin, xMax], [yMin, yMax]);
   };
 
+  const [additionalMetrics, setAdditionalMetrics] = useState(null);
+
   const handleSubmitPrediction = () => {
     if (drawnPoints.length < 2) {
       setErrorMessage('Please draw your prediction first.');
@@ -151,28 +202,43 @@ const Sidebar = ({
         return;
       }
       
-      // Interpolate user drawn points to match x values
-      const userValues = interpolatePoints(drawnPoints, xValues);
+      // Interpolate user drawn points to match x values with smoothing applied
+      const userValues = interpolatePoints(drawnPoints, xValues, true); // Use smoothing
       console.log(`Interpolated ${userValues.filter(v => v !== null).length}/${userValues.length} user values`);
       
-      // Calculate MSE with error handling
-      let mse;
+      // Calculate various metrics
+      let similarity, mse, rmse, mae;
       try {
-        mse = calculateMSE(userValues, actualValues);
-        console.log("MSE calculated:", mse);
+        // Main metric: function similarity (0-100)
+        similarity = calculateFunctionSimilarity(userValues, actualValues);
+        console.log("Function similarity calculated:", similarity);
         
-        if (isNaN(mse) || !isFinite(mse)) {
-          throw new Error("Could not calculate a valid score");
+        // Calculate additional metrics for reference
+        mse = calculateMSE(userValues, actualValues);
+        rmse = calculateRMSE(userValues, actualValues);
+        mae = calculateMAE(userValues, actualValues);
+        
+        console.log("Metrics - MSE:", mse, "RMSE:", rmse, "MAE:", mae);
+        
+        if (isNaN(similarity) || !isFinite(similarity)) {
+          throw new Error("Could not calculate a valid similarity score");
         }
-      } catch (mseError) {
-        console.error("MSE calculation error:", mseError);
-        setErrorMessage(`Error calculating score: ${mseError.message}`);
+        
+        // Store additional metrics for display
+        setAdditionalMetrics({
+          mse: mse.toFixed(2),
+          rmse: rmse.toFixed(2),
+          mae: mae.toFixed(2)
+        });
+      } catch (scoreError) {
+        console.error("Score calculation error:", scoreError);
+        setErrorMessage(`Error calculating score: ${scoreError.message}`);
         return;
       }
       
-      // Scale to a 0-100 score, higher is better (with safety checks)
-      const calculatedScore = Math.max(0, 100 * (1 - Math.min(1, mse / 100)));
-      console.log("Final score calculated:", calculatedScore);
+      // Use the function similarity as the score (already on 0-100 scale)
+      const calculatedScore = similarity;
+      console.log("Final similarity score:", calculatedScore);
       
       setScore(calculatedScore);
       
@@ -198,6 +264,7 @@ const Sidebar = ({
 
   const handleTryAgain = () => {
     setScore(null);
+    setAdditionalMetrics(null);
     onResetDrawing();
     onShowActualFunction(false);
     setFunctionInput('');
@@ -230,6 +297,57 @@ const Sidebar = ({
               <button onClick={handleFunctionSubmit} className={styles.button}>
                 Test Function
               </button>
+            </div>
+            
+            <div className={styles.functionCategoriesContainer}>
+              <h3>
+                Function Categories
+                <span className={styles.newFeatureBadge}>New!</span>
+              </h3>
+              <div className={styles.categoryTabs}>
+                {functionCategories.map((category, index) => (
+                  <button
+                    key={index}
+                    className={`${styles.categoryTab} ${selectedCategory === index ? styles.activeTab : ''}`}
+                    onClick={() => setSelectedCategory(selectedCategory === index ? null : index)}
+                  >
+                    {category.name}
+                  </button>
+                ))}
+              </div>
+              
+              {selectedCategory !== null && (
+                <div className={styles.functionOptions}>
+                  {functionCategories[selectedCategory].functions.map((func, index) => (
+                    <button
+                      key={index}
+                      className={styles.functionOption}
+                      onClick={() => {
+                        setFunctionInput(func.expression);
+                        // Auto validate after a short delay
+                        setTimeout(() => {
+                          try {
+                            evaluateFunction(func.expression, [0, 1, -1]);
+                            setFunctionPreview(func.expression);
+                            setErrorMessage('');
+                          } catch (err) {
+                            console.error("Function option validation error:", err);
+                          }
+                        }, 100);
+                      }}
+                      title={func.expression}
+                    >
+                      {func.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+              
+              {selectedCategory !== null && (
+                <div className={styles.functionHelp}>
+                  <p>Click a function to use it or customize it in the input field above.</p>
+                </div>
+              )}
             </div>
           </section>
           
@@ -312,6 +430,27 @@ const Sidebar = ({
                 <span className={styles.scoreLabel}>Accuracy Score:</span>
                 <span className={styles.scoreValue}>{score.toFixed(2)}%</span>
               </div>
+              
+              {additionalMetrics && (
+                <div className={styles.additionalMetrics}>
+                  <h4>Additional Metrics</h4>
+                  <div className={styles.metricsGrid}>
+                    <div className={styles.metricItem}>
+                      <span className={styles.metricLabel}>MSE:</span>
+                      <span className={styles.metricValue}>{additionalMetrics.mse}</span>
+                    </div>
+                    <div className={styles.metricItem}>
+                      <span className={styles.metricLabel}>RMSE:</span>
+                      <span className={styles.metricValue}>{additionalMetrics.rmse}</span>
+                    </div>
+                    <div className={styles.metricItem}>
+                      <span className={styles.metricLabel}>MAE:</span>
+                      <span className={styles.metricValue}>{additionalMetrics.mae}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
               <div className={styles.actualFunction}>
                 <p>The actual function was:</p>
                 <pre className={styles.functionDisplay}>{currentFunction}</pre>
