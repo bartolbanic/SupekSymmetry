@@ -15,6 +15,26 @@
   gap: 5px;
   border-bottom: 1px solid #ddd;
   padding-bottom: 10px;
+  overflow-x: auto;
+  white-space: nowrap;
+  scrollbar-width: thin;
+  scrollbar-color: #3498db #f0f0f0;
+  padding-bottom: 10px;
+}
+
+.tabs::-webkit-scrollbar {
+  height: 6px;
+}
+
+.tabs::-webkit-scrollbar-track {
+  background: #f0f0f0;
+  border-radius: 3px;
+}
+
+.tabs::-webkit-scrollbar-thumb {
+  background-color: #3498db;
+  border-radius: 3px;
+  border: 2px solid #f0f0f0;
 }
 
 .tabButton {
@@ -39,10 +59,11 @@
 
 .symbolsContainer {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   padding: 5px;
-  overflow-x: auto;
-  white-space: nowrap;
+  max-height: 200px;
+  overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: #3498db #f0f0f0;
   padding-bottom: 10px;
