@@ -392,3 +392,117 @@
   font-weight: bold;
   color: #9b59b6;
 }
+
+/* Math Input Keypad and Related Styles */
+.inputWithKeypad {
+  display: flex;
+  position: relative;
+  width: 100%;
+}
+
+.inputWithKeypad .input {
+  flex: 1;
+  padding-right: 40px; /* Space for toggle button */
+}
+
+.toggleKeypadButton {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #f0f8ff;
+  border: 1px solid #ccc;
+  border-left: none;
+  border-top-right-radius: 4px;
+  border-bottom-right-radius: 4px;
+  cursor: pointer;
+  font-size: 1.2rem;
+  color: #3498db;
+  transition: all 0.2s;
+}
+
+.toggleKeypadButton:hover {
+  background-color: #d6eaf8;
+  color: #2980b9;
+}
+
+.mathKeypadContainer {
+  width: 100%;
+  margin-top: 5px;
+  margin-bottom: 10px;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+/* Token Display Styles */
+.tokenDisplay {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 20px;
+  background-color: #f5fbff;
+  padding: 12px;
+  border-radius: 8px;
+  border: 2px dashed #3498db;
+}
+
+.tokenLabel {
+  font-weight: bold;
+  color: #555;
+  margin-bottom: 10px;
+}
+
+.tokenIcons {
+  display: flex;
+  gap: 8px;
+}
+
+.tokenIcon {
+  font-size: 1.6rem;
+  transition: transform 0.3s, color 0.3s;
+}
+
+.tokenEarned {
+  color: #f39c12;
+  text-shadow: 0 0 5px rgba(243, 156, 18, 0.5);
+  transform: scale(1.1);
+  animation: tokenPulse 2s infinite;
+}
+
+.tokenEmpty {
+  color: #bdc3c7;
+}
+
+/* History Token Styles */
+.historyDetails {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.historyTokens {
+  display: flex;
+  gap: 2px;
+}
+
+.historyTokenIcon {
+  color: #f39c12;
+  font-size: 0.8rem;
+}
+
+@keyframes tokenPulse {
+  0% {
+    transform: scale(1.05);
+  }
+  50% {
+    transform: scale(1.15);
+  }
+  100% {
+    transform: scale(1.05);
+  }
+}

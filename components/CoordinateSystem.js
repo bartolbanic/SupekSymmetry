@@ -21,16 +21,37 @@ const CoordinateSystem = ({
   const [plotInstance, setPlotInstance] = useState(null);
   const [smoothedPoints, setSmoothedPoints] = useState([]);
   
-  // Calculate grid density based on range
-  const calculateGridDensity = useCallback(() => {
+  // Calculate grid density and step size based on range (zoom level)
+  const calculateGridSettings = useCallback(() => {
     const xSpan = Math.abs(xRange[1] - xRange[0]);
     const ySpan = Math.abs(yRange[1] - yRange[0]);
     
-    // Base density - more lines for smaller ranges (higher zoom)
-    const xDensity = Math.max(2, Math.min(20, Math.floor(100 / xSpan)));
-    const yDensity = Math.max(2, Math.min(20, Math.floor(100 / ySpan)));
+    // Determine appropriate step sizes based on zoom level
+    let xStep, yStep;
     
-    return { xDensity, yDensity };
+    // For x-axis steps
+    if (xSpan <= 5) {
+      xStep = 0.5; // Small range - fine grid (0.5 units)
+    } else if (xSpan <= 10) {
+      xStep = 1; // Medium range - medium grid (1 unit)
+    } else if (xSpan <= 50) {
+      xStep = 5; // Larger range - coarser grid (5 units)
+    } else {
+      xStep = 10; // Very large range - very coarse grid (10 units)
+    }
+    
+    // For y-axis steps
+    if (ySpan <= 5) {
+      yStep = 0.5; // Small range - fine grid (0.5 units)
+    } else if (ySpan <= 10) {
+      yStep = 1; // Medium range - medium grid (1 unit)
+    } else if (ySpan <= 50) {
+      yStep = 5; // Larger range - coarser grid (5 units)
+    } else {
+      yStep = 10; // Very large range - very coarse grid (10 units)
+    }
+    
+    return { xStep, yStep };
   }, [xRange, yRange]);
 
   // Generate actual function data
@@ -81,7 +102,7 @@ const CoordinateSystem = ({
     return { x, y };
   }, [plotInstance, xRange, yRange]);
 
-  // Drawing event handlers
+  // Drawing event handlers with precise cursor positioning at center point
   const handleMouseDown = useCallback((e) => {
     console.log("Mouse down event triggered, isTestMode:", isTestMode);
     
@@ -92,8 +113,13 @@ const CoordinateSystem = ({
     // Get bounding rectangle of the overlay div (e.currentTarget)
     const rect = e.currentTarget.getBoundingClientRect();
     
+    // Get the center of the cursor position
+    // This fixes the alignment issue where drawing appeared offset from cursor
+    const centerX = e.clientX;
+    const centerY = e.clientY;
+    
     // Convert screen coordinates to plot coordinates
-    const { x, y } = screenToPlotCoordinates(e.clientX, e.clientY, rect);
+    const { x, y } = screenToPlotCoordinates(centerX, centerY, rect);
     
     // Start drawing
     setIsDrawing(true);
@@ -110,11 +136,31 @@ const CoordinateSystem = ({
     // Get bounding rectangle of the overlay div (e.currentTarget)
     const rect = e.currentTarget.getBoundingClientRect();
     
-    // Convert screen coordinates to plot coordinates
-    const { x, y } = screenToPlotCoordinates(e.clientX, e.clientY, rect);
+    // Get the center of the cursor position
+    // This ensures the line traces exactly where the cursor is, not offset
+    const centerX = e.clientX;
+    const centerY = e.clientY;
     
-    // Add point to drawing
-    setDrawnPoints(prev => [...prev, { x, y }]);
+    // Convert screen coordinates to plot coordinates
+    const { x, y } = screenToPlotCoordinates(centerX, centerY, rect);
+    
+    // Add point to drawing - sampling at a reasonable rate to prevent too many points
+    // Only add point if it's different enough from the last point to avoid duplicate points
+    setDrawnPoints(prev => {
+      if (prev.length === 0) return [{ x, y }];
+      
+      const lastPoint = prev[prev.length - 1];
+      // Only add point if the movement is significant enough
+      // This also helps with smoothing the line
+      const dx = Math.abs(x - lastPoint.x);
+      const dy = Math.abs(y - lastPoint.y);
+      const minDistance = 0.02; // Minimum distance to add a new point
+      
+      if (dx > minDistance || dy > minDistance) {
+        return [...prev, { x, y }];
+      }
+      return prev;
+    });
     
     // Limit logging to avoid console spam
     if (Math.random() < 0.05) {
@@ -156,68 +202,111 @@ const CoordinateSystem = ({
     }
   }, [isDrawing, drawnPoints, onDrawingComplete]);
 
-  // Generate grid lines with dynamic density
+  // Generate grid lines with adaptive spacing based on zoom level
   const generateGridLines = useCallback(() => {
-    const { xDensity, yDensity } = calculateGridDensity();
+    const { xStep, yStep } = calculateGridSettings();
     
     const gridLines = [];
-    const xSpan = xRange[1] - xRange[0];
-    const ySpan = yRange[1] - yRange[0];
+    
+    // Calculate grid line boundaries with extra room for "infinite" appearance
+    // Extend beyond visible range by 100x to make grid appear infinite
+    const visibleXSpan = xRange[1] - xRange[0];
+    const visibleYSpan = yRange[1] - yRange[0];
+    
+    const extendedXMin = xRange[0] - visibleXSpan * 100;
+    const extendedXMax = xRange[1] + visibleXSpan * 100;
+    const extendedYMin = yRange[0] - visibleYSpan * 100;
+    const extendedYMax = yRange[1] + visibleYSpan * 100;
+    
+    // Calculate adaptive grid line widths based on zoom level
+    // This ensures grid lines remain visible at any zoom level
+    const zoomMultiplier = Math.min(visibleXSpan, visibleYSpan) / 10;
+    const baseWidth = 0.5; 
+    const gridLineWidth = Math.max(baseWidth, baseWidth / zoomMultiplier);
     
     // Add vertical grid lines (constant x)
-    const xStep = xSpan / xDensity;
-    for (let x = Math.ceil(xRange[0] / xStep) * xStep; x <= xRange[1]; x += xStep) {
-      // Skip the axis at x=0 as it will be added separately
+    // Start from a round number below the extended min
+    const startX = Math.floor(extendedXMin / xStep) * xStep;
+    for (let x = startX; x <= extendedXMax; x += xStep) {
+      // Skip the axis at x=0 as it will be added separately with bolder style
       if (Math.abs(x) < 0.001) continue; 
+      
+      // Determine if this is a major grid line (multiple of 5 or 10)
+      const isMajorLine = Math.abs(x % (xStep * 5)) < 0.001;
       
       gridLines.push({
         x: [x, x],
-        y: [yRange[0], yRange[1]],
+        y: [extendedYMin, extendedYMax], // Extend beyond the visible area
         mode: 'lines',
-        line: { width: 0.5, color: '#e0e0e0' },
+        line: { 
+          width: isMajorLine ? gridLineWidth * 1.5 : gridLineWidth, 
+          color: isMajorLine ? '#c0c0c0' : '#e0e0e0' 
+        },
         hoverinfo: 'none',
         showlegend: false
       });
     }
     
     // Add horizontal grid lines (constant y)
-    const yStep = ySpan / yDensity;
-    for (let y = Math.ceil(yRange[0] / yStep) * yStep; y <= yRange[1]; y += yStep) {
-      // Skip the axis at y=0 as it will be added separately
+    // Start from a round number below the extended min
+    const startY = Math.floor(extendedYMin / yStep) * yStep;
+    for (let y = startY; y <= extendedYMax; y += yStep) {
+      // Skip the axis at y=0 as it will be added separately with bolder style
       if (Math.abs(y) < 0.001) continue;
       
+      // Determine if this is a major grid line (multiple of 5 or 10)
+      const isMajorLine = Math.abs(y % (yStep * 5)) < 0.001;
+      
       gridLines.push({
-        x: [xRange[0], xRange[1]],
+        x: [extendedXMin, extendedXMax], // Extend beyond the visible area
         y: [y, y],
         mode: 'lines',
-        line: { width: 0.5, color: '#e0e0e0' },
+        line: { 
+          width: isMajorLine ? gridLineWidth * 1.5 : gridLineWidth, 
+          color: isMajorLine ? '#c0c0c0' : '#e0e0e0' 
+        },
         hoverinfo: 'none',
         showlegend: false
       });
     }
     
     return gridLines;
-  }, [xRange, yRange, calculateGridDensity]);
+  }, [xRange, yRange, calculateGridSettings]);
 
+  // Calculate extended ranges for "infinite" axes
+  const visibleXSpan = xRange[1] - xRange[0];
+  const visibleYSpan = yRange[1] - yRange[0];
+  const extendedXMin = xRange[0] - visibleXSpan * 100;
+  const extendedXMax = xRange[1] + visibleXSpan * 100;
+  const extendedYMin = yRange[0] - visibleYSpan * 100;
+  const extendedYMax = yRange[1] + visibleYSpan * 100;
+  
   // Define plot data
   const data = [
     // Dynamic grid lines
     ...generateGridLines(),
     
-    // Main axes (bolder)
+    // Main axes (bolder) - extended well beyond visible area for "infinite" appearance
+    // With adaptive line width based on zoom level to maintain visibility
     {
-      x: [xRange[0], xRange[1]],
+      x: [extendedXMin, extendedXMax], // Extended x-axis (y=0)
       y: [0, 0],
       mode: 'lines',
-      line: { width: 2, color: 'black' }, // Bolder line for x=0 axis
+      line: { 
+        width: Math.max(3, 3 / (Math.min(visibleXSpan, visibleYSpan) / 10)), 
+        color: 'black' 
+      }, // Bolder line for x-axis (y=0) that scales with zoom
       hoverinfo: 'none',
       showlegend: false
     },
     {
       x: [0, 0],
-      y: [yRange[0], yRange[1]],
+      y: [extendedYMin, extendedYMax], // Extended y-axis (x=0)
       mode: 'lines',
-      line: { width: 2, color: 'black' }, // Bolder line for y=0 axis
+      line: { 
+        width: Math.max(3, 3 / (Math.min(visibleXSpan, visibleYSpan) / 10)), 
+        color: 'black' 
+      }, // Bolder line for y-axis (x=0) that scales with zoom
       hoverinfo: 'none',
       showlegend: false
     },
@@ -227,7 +316,11 @@ const CoordinateSystem = ({
       x: drawnPoints.map(p => p.x),
       y: drawnPoints.map(p => p.y),
       mode: 'lines',
-      line: { width: 1, color: 'rgba(255, 0, 0, 0.3)', dash: 'dot' },
+      line: { 
+        width: Math.max(2, 2 / (Math.min(visibleXSpan, visibleYSpan) / 10)), 
+        color: 'rgba(255, 0, 0, 0.4)', 
+        dash: 'dot' 
+      },
       name: 'Raw Drawing',
       showlegend: smoothedPoints.length > 0 // Only show in legend if we have smoothed points
     }] : []),
@@ -237,7 +330,10 @@ const CoordinateSystem = ({
       x: smoothedPoints.map(p => p.x),
       y: smoothedPoints.map(p => p.y),
       mode: 'lines',
-      line: { width: 3, color: 'red' },
+      line: { 
+        width: Math.max(4, 4 / (Math.min(visibleXSpan, visibleYSpan) / 10)), 
+        color: 'red' 
+      }, // Adaptive thickness based on zoom level
       name: 'Your Prediction (Smoothed)'
     }] : []),
     
@@ -246,7 +342,10 @@ const CoordinateSystem = ({
       x: actualFunction.x,
       y: actualFunction.y,
       mode: 'lines',
-      line: { width: 3, color: 'blue' },
+      line: { 
+        width: Math.max(3, 3 / (Math.min(visibleXSpan, visibleYSpan) / 10)), 
+        color: 'blue' 
+      }, // Adaptive thickness based on zoom level
       name: 'Actual Function'
     }] : [])
   ];
@@ -320,8 +419,10 @@ const CoordinateSystem = ({
           bottom: 0,
           zIndex: 500, // Above the plot but below instructions
           cursor: 'crosshair',
-          // Transparent background
-          backgroundColor: 'rgba(255, 255, 255, 0.01)', // Almost invisible but not totally transparent
+          // Completely transparent but still captures all events
+          // This ensures the overlay doesn't interfere with visibility
+          backgroundColor: 'transparent',
+          pointerEvents: 'all' // Important: Ensures all pointer events are captured
         }}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}

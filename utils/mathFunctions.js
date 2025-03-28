@@ -237,17 +237,10 @@ export const calculateMAE = (predicted, actual) => {
 };
 
 export const calculateFunctionSimilarity = (predicted, actual) => {
-  // Calculate MSE using the existing function
-  const mse = calculateMSE(predicted, actual);
+  // Calculate RMSE using the existing function
+  const rmse = calculateRMSE(predicted, actual);
 
-  // For a similarity metric, we need to transform the MSE
-  // MSE ranges from 0 (perfect match) to potentially infinity
-
-  // We'll use an exponential decay function to map MSE to a 0-100 scale
-  // similarity = 100 * e^(-k * MSE)
-  // where k is a scaling factor that determines how quickly similarity drops as MSE increases
-
-  // Calculate the range of the actual values to adapt the scaling factor
+  // Get range of actual values to normalize error
   const validActual = actual.filter(
     (a) =>
       a !== null &&
@@ -266,15 +259,61 @@ export const calculateFunctionSimilarity = (predicted, actual) => {
   const minActual = Math.min(...validActual);
   const range = Math.max(1, maxActual - minActual); // Ensure minimum range of 1
 
-  // Dynamic scaling factor based on data range
-  // This makes the metric adaptive to the scale of the data
-  const k = 1 / (0.1 * range * range);
+  // Normalize RMSE by the range of actual values - this makes the score adaptive to the scale of the data
+  const normalizedRMSE = rmse / range;
+  
+  // Define a threshold for what constitutes a "perfect" score (nearly impossible to get exactly 0)
+  const perfectThreshold = 0.01;
+  
+  // Define thresholds for different score levels - these map to token awards
+  const thresholds = [
+    { threshold: perfectThreshold, score: 100 }, // Perfect match (5 tokens)
+    { threshold: 0.05, score: 95 },              // Excellent (4 tokens)
+    { threshold: 0.10, score: 85 },              // Great (3 tokens)
+    { threshold: 0.20, score: 70 },              // Good (2 tokens) 
+    { threshold: 0.35, score: 50 },              // Fair (1 token)
+    { threshold: 0.50, score: 30 },              // Poor (0 tokens)
+    { threshold: Infinity, score: 0 }            // Failed
+  ];
+  
+  // Find the appropriate score based on thresholds
+  let similarity = 0;
+  for (const { threshold, score } of thresholds) {
+    if (normalizedRMSE <= threshold) {
+      similarity = score;
+      break;
+    }
+  }
+  
+  // If normalized RMSE is between thresholds, interpolate the score for smoother results
+  if (normalizedRMSE > perfectThreshold) {
+    for (let i = 0; i < thresholds.length - 1; i++) {
+      if (normalizedRMSE > thresholds[i].threshold && normalizedRMSE <= thresholds[i + 1].threshold) {
+        // Linear interpolation between threshold points
+        const t = (normalizedRMSE - thresholds[i].threshold) / 
+                  (thresholds[i + 1].threshold - thresholds[i].threshold);
+        similarity = thresholds[i].score * (1 - t) + thresholds[i + 1].score * t;
+        break;
+      }
+    }
+  }
 
-  // Calculate similarity score (0-100)
-  const similarity = 100 * Math.exp(-k * mse);
-
-  // Round to 2 decimal places for readability
-  return Math.round(similarity * 100) / 100;
+  // Calculate tokens awarded (0-5)
+  let tokens = 0;
+  if (similarity >= 95) tokens = 5;      // Perfect/Near-perfect
+  else if (similarity >= 85) tokens = 4; // Excellent
+  else if (similarity >= 70) tokens = 3; // Great
+  else if (similarity >= 50) tokens = 2; // Good
+  else if (similarity >= 30) tokens = 1; // Fair
+  
+  // Log detailed information for debugging
+  console.log(`Similarity calculation: RMSE=${rmse.toFixed(2)}, Range=${range.toFixed(2)}, NormalizedRMSE=${normalizedRMSE.toFixed(4)}, Score=${similarity.toFixed(2)}, Tokens=${tokens}`);
+  
+  // Return the similarity score (0-100)
+  return {
+    score: Math.round(similarity * 100) / 100,
+    tokens
+  };
 };
 
 /**

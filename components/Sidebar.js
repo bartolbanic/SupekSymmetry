@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import styles from '../styles/Sidebar.module.css';
 import { 
   calculateMSE, 
@@ -8,6 +8,7 @@ import {
   interpolatePoints, 
   evaluateFunction 
 } from '../utils/mathFunctions';
+import MathInputKeypad from './MathInputKeypad';
 
 const Sidebar = ({ 
   onFunctionSubmit, 
@@ -31,7 +32,10 @@ const Sidebar = ({
   const [yMin, setYMin] = useState(yRange[0]);
   const [yMax, setYMax] = useState(yRange[1]);
   const [score, setScore] = useState(null);
+  const [tokens, setTokens] = useState(null);
   const [selectedCategory, setSelectedCategory] = useState(null);
+  const [showKeypad, setShowKeypad] = useState(false);
+  const functionInputRef = useRef(null);
   
   // Function categories
   const functionCategories = [
@@ -207,11 +211,14 @@ const Sidebar = ({
       console.log(`Interpolated ${userValues.filter(v => v !== null).length}/${userValues.length} user values`);
       
       // Calculate various metrics
-      let similarity, mse, rmse, mae;
+      let similarityResult, mse, rmse, mae;
       try {
-        // Main metric: function similarity (0-100)
-        similarity = calculateFunctionSimilarity(userValues, actualValues);
-        console.log("Function similarity calculated:", similarity);
+        // Main metric: function similarity with token system (0-100 + tokens)
+        similarityResult = calculateFunctionSimilarity(userValues, actualValues);
+        console.log("Function similarity calculated:", similarityResult);
+        
+        // The result now contains both score and tokens
+        const { score: similarityScore, tokens: earnedTokens } = similarityResult;
         
         // Calculate additional metrics for reference
         mse = calculateMSE(userValues, actualValues);
@@ -219,8 +226,9 @@ const Sidebar = ({
         mae = calculateMAE(userValues, actualValues);
         
         console.log("Metrics - MSE:", mse, "RMSE:", rmse, "MAE:", mae);
+        console.log("Earned tokens:", earnedTokens);
         
-        if (isNaN(similarity) || !isFinite(similarity)) {
+        if (isNaN(similarityScore) || !isFinite(similarityScore)) {
           throw new Error("Could not calculate a valid similarity score");
         }
         
@@ -230,24 +238,24 @@ const Sidebar = ({
           rmse: rmse.toFixed(2),
           mae: mae.toFixed(2)
         });
+        
+        // Set both score and tokens
+        setScore(similarityScore);
+        setTokens(earnedTokens);
+        
       } catch (scoreError) {
         console.error("Score calculation error:", scoreError);
         setErrorMessage(`Error calculating score: ${scoreError.message}`);
         return;
       }
       
-      // Use the function similarity as the score (already on 0-100 scale)
-      const calculatedScore = similarity;
-      console.log("Final similarity score:", calculatedScore);
-      
-      setScore(calculatedScore);
-      
-      // Add to history
+      // Add to history with tokens
       setHistory([
         ...history,
         {
           function: currentFunction,
-          score: calculatedScore.toFixed(2),
+          score: similarityScore.toFixed(2),
+          tokens: earnedTokens,
           timestamp: new Date().toISOString()
         }
       ]);
@@ -264,12 +272,35 @@ const Sidebar = ({
 
   const handleTryAgain = () => {
     setScore(null);
+    setTokens(null);
     setAdditionalMetrics(null);
     onResetDrawing();
     onShowActualFunction(false);
     setFunctionInput('');
     onFunctionSubmit('');
     setIsTestMode(false);
+  };
+  
+  // Handle insertion of symbols from the math keypad
+  const handleSymbolInsert = (symbolValue) => {
+    // Get cursor position
+    const cursorPos = functionInputRef.current?.selectionStart || functionInput.length;
+    const beforeCursor = functionInput.substring(0, cursorPos);
+    const afterCursor = functionInput.substring(cursorPos);
+    
+    // Insert the symbol at cursor position
+    const newValue = beforeCursor + symbolValue + afterCursor;
+    setFunctionInput(newValue);
+    
+    // Focus back on input after a short delay to allow React to update
+    setTimeout(() => {
+      if (functionInputRef.current) {
+        functionInputRef.current.focus();
+        // Place cursor after the inserted symbol
+        const newCursorPos = cursorPos + symbolValue.length;
+        functionInputRef.current.setSelectionRange(newCursorPos, newCursorPos);
+      }
+    }, 10);
   };
 
   return (
@@ -281,13 +312,31 @@ const Sidebar = ({
           <section className={styles.section}>
             <h2>Function Input</h2>
             <div className={styles.inputGroup}>
-              <input
-                type="text"
-                placeholder="e.g., sin(x) or x^2 - 2*x + 1"
-                value={functionInput}
-                onChange={(e) => setFunctionInput(e.target.value)}
-                className={styles.input}
-              />
+              <div className={styles.inputWithKeypad}>
+                <input
+                  ref={functionInputRef}
+                  type="text"
+                  placeholder="e.g., sin(x) or x^2 - 2*x + 1"
+                  value={functionInput}
+                  onChange={(e) => setFunctionInput(e.target.value)}
+                  className={styles.input}
+                  onFocus={() => setShowKeypad(true)}
+                />
+                <button 
+                  className={styles.toggleKeypadButton}
+                  onClick={() => setShowKeypad(!showKeypad)}
+                  title={showKeypad ? "Hide math symbols" : "Show math symbols"}
+                >
+                  {showKeypad ? "×" : "π"}
+                </button>
+              </div>
+
+              {showKeypad && (
+                <div className={styles.mathKeypadContainer}>
+                  <MathInputKeypad onInsert={handleSymbolInsert} />
+                </div>
+              )}
+              
               {functionPreview && (
                 <div className={styles.functionPreview}>
                   <span>Current function: </span>
@@ -431,6 +480,22 @@ const Sidebar = ({
                 <span className={styles.scoreValue}>{score.toFixed(2)}%</span>
               </div>
               
+              {/* New Token Display */}
+              <div className={styles.tokenDisplay}>
+                <span className={styles.tokenLabel}>Tokens Earned:</span>
+                <div className={styles.tokenIcons}>
+                  {/* Generate token icons based on earned tokens (0-5) */}
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <span 
+                      key={i} 
+                      className={`${styles.tokenIcon} ${i < tokens ? styles.tokenEarned : styles.tokenEmpty}`}
+                    >
+                      ★
+                    </span>
+                  ))}
+                </div>
+              </div>
+              
               {additionalMetrics && (
                 <div className={styles.additionalMetrics}>
                   <h4>Additional Metrics</h4>
@@ -476,7 +541,16 @@ const Sidebar = ({
             {history.map((entry, index) => (
               <div key={index} className={styles.historyItem}>
                 <div className={styles.historyFunction}>{entry.function}</div>
-                <div className={styles.historyScore}>{entry.score}%</div>
+                <div className={styles.historyDetails}>
+                  <span className={styles.historyScore}>{entry.score}%</span>
+                  {entry.tokens && (
+                    <span className={styles.historyTokens}>
+                      {Array.from({ length: entry.tokens }).map((_, i) => (
+                        <span key={i} className={styles.historyTokenIcon}>★</span>
+                      ))}
+                    </span>
+                  )}
+                </div>
               </div>
             ))}
           </div>
