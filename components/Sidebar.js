@@ -33,50 +33,8 @@ const Sidebar = ({
   const [yMax, setYMax] = useState(yRange[1]);
   const [score, setScore] = useState(null);
   const [tokens, setTokens] = useState(null);
-  const [selectedCategory, setSelectedCategory] = useState(null);
-  const [showKeypad, setShowKeypad] = useState(false);
+  const [showKeypad, setShowKeypad] = useState(true); // Changed to true by default
   const functionInputRef = useRef(null);
-  
-  // Function categories
-  const functionCategories = [
-    {
-      name: 'Trigonometric',
-      functions: [
-        { name: 'Sine', expression: 'sin(x)' },
-        { name: 'Cosine', expression: 'cos(x)' },
-        { name: 'Tangent', expression: 'tan(x)' },
-        { name: 'Sine Squared', expression: 'sin(x)^2' },
-        { name: 'Cosine Squared', expression: 'cos(x)^2' }
-      ]
-    },
-    {
-      name: 'Polynomial',
-      functions: [
-        { name: 'Linear', expression: '2*x + 1' },
-        { name: 'Quadratic', expression: 'x^2 - 2*x + 1' },
-        { name: 'Cubic', expression: 'x^3 - 2*x^2 + x - 3' },
-        { name: 'Quartic', expression: 'x^4 - 3*x^2 + 2' }
-      ]
-    },
-    {
-      name: 'Exponential',
-      functions: [
-        { name: 'Exponential', expression: 'exp(x)' },
-        { name: 'Natural Log', expression: 'log(abs(x) + 0.01)' },
-        { name: 'Exponential Decay', expression: 'exp(-x)' },
-        { name: 'Sigmoid', expression: '1 / (1 + exp(-x))' }
-      ]
-    },
-    {
-      name: 'Compositions',
-      functions: [
-        { name: 'Damped Sine', expression: 'sin(x) * exp(-abs(x)/5)' },
-        { name: 'Absolute Sine', expression: 'abs(sin(x))' },
-        { name: 'Polynomial with Sine', expression: 'x^2 + sin(x)' },
-        { name: 'Wave Packet', expression: 'sin(x^2) / (1 + abs(x/5))' }
-      ]
-    }
-  ];
   
   // Preview function as it's typed
   useEffect(() => {
@@ -346,57 +304,6 @@ const Sidebar = ({
               <button onClick={handleFunctionSubmit} className={styles.button}>
                 Test Function
               </button>
-            </div>
-            
-            <div className={styles.functionCategoriesContainer}>
-              <h3>
-                Function Categories
-                <span className={styles.newFeatureBadge}>New!</span>
-              </h3>
-              <div className={styles.categoryTabs}>
-                {functionCategories.map((category, index) => (
-                  <button
-                    key={index}
-                    className={`${styles.categoryTab} ${selectedCategory === index ? styles.activeTab : ''}`}
-                    onClick={() => setSelectedCategory(selectedCategory === index ? null : index)}
-                  >
-                    {category.name}
-                  </button>
-                ))}
-              </div>
-              
-              {selectedCategory !== null && (
-                <div className={styles.functionOptions}>
-                  {functionCategories[selectedCategory].functions.map((func, index) => (
-                    <button
-                      key={index}
-                      className={styles.functionOption}
-                      onClick={() => {
-                        setFunctionInput(func.expression);
-                        // Auto validate after a short delay
-                        setTimeout(() => {
-                          try {
-                            evaluateFunction(func.expression, [0, 1, -1]);
-                            setFunctionPreview(func.expression);
-                            setErrorMessage('');
-                          } catch (err) {
-                            console.error("Function option validation error:", err);
-                          }
-                        }, 100);
-                      }}
-                      title={func.expression}
-                    >
-                      {func.name}
-                    </button>
-                  ))}
-                </div>
-              )}
-              
-              {selectedCategory !== null && (
-                <div className={styles.functionHelp}>
-                  <p>Click a function to use it or customize it in the input field above.</p>
-                </div>
-              )}
             </div>
           </section>
           

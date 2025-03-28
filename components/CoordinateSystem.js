@@ -22,34 +22,44 @@ const CoordinateSystem = ({
   const [smoothedPoints, setSmoothedPoints] = useState([]);
   
   // Calculate grid density and step size based on range (zoom level)
+  // This follows the approach used by Desmos and GeoGebra
   const calculateGridSettings = useCallback(() => {
     const xSpan = Math.abs(xRange[1] - xRange[0]);
     const ySpan = Math.abs(yRange[1] - yRange[0]);
     
-    // Determine appropriate step sizes based on zoom level
-    let xStep, yStep;
+    // Calculate ideal number of grid lines (10-15 lines looks good)
+    const idealGridLineCount = 10;
     
-    // For x-axis steps
-    if (xSpan <= 5) {
-      xStep = 0.5; // Small range - fine grid (0.5 units)
-    } else if (xSpan <= 10) {
-      xStep = 1; // Medium range - medium grid (1 unit)
-    } else if (xSpan <= 50) {
-      xStep = 5; // Larger range - coarser grid (5 units)
-    } else {
-      xStep = 10; // Very large range - very coarse grid (10 units)
-    }
+    // Dynamic grid step calculation based on the span
+    // Uses a base-10 log calculation to determine appropriate step size
+    // This ensures round numbers that make sense for human reading
+    const calculateStep = (span) => {
+      if (span <= 0) return 1; // Avoid division by zero
+      
+      // Get the magnitude of the span (1, 10, 100, etc.)
+      const magnitude = Math.pow(10, Math.floor(Math.log10(span)));
+      
+      // Calculate a raw step based on ideal grid line count
+      const rawStep = span / idealGridLineCount;
+      const normalizedStep = rawStep / magnitude;
+      
+      // Choose a nice round step based on the normalized step
+      let niceStep;
+      if (normalizedStep <= 0.1) niceStep = 0.1;
+      else if (normalizedStep <= 0.2) niceStep = 0.2;
+      else if (normalizedStep <= 0.5) niceStep = 0.5;
+      else if (normalizedStep <= 1.0) niceStep = 1.0;
+      else if (normalizedStep <= 2.0) niceStep = 2.0;
+      else niceStep = 5.0;
+      
+      // Multiply by the magnitude to get the final step
+      return niceStep * magnitude;
+    };
     
-    // For y-axis steps
-    if (ySpan <= 5) {
-      yStep = 0.5; // Small range - fine grid (0.5 units)
-    } else if (ySpan <= 10) {
-      yStep = 1; // Medium range - medium grid (1 unit)
-    } else if (ySpan <= 50) {
-      yStep = 5; // Larger range - coarser grid (5 units)
-    } else {
-      yStep = 10; // Very large range - very coarse grid (10 units)
-    }
+    const xStep = calculateStep(xSpan);
+    const yStep = calculateStep(ySpan);
+    
+    console.log(`Grid settings calculated: xStep=${xStep}, yStep=${yStep} for spans: x=${xSpan}, y=${ySpan}`);
     
     return { xStep, yStep };
   }, [xRange, yRange]);
