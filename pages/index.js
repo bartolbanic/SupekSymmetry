@@ -36,9 +36,18 @@ export default function Home() {
 
   // Function handlers
   const handleFunctionSubmit = (functionString) => {
+    console.log("Function submitted:", functionString);
     setCurrentFunction(functionString);
     setDrawnPoints([]);
     setShowActualFunction(false);
+    
+    // Always enable test mode when a function is submitted
+    if (functionString) {
+      console.log("Enabling test mode for drawing");
+      setIsTestMode(true);
+    } else {
+      setIsTestMode(false);
+    }
   };
 
   const handleRangeChange = (newXRange, newYRange) => {
@@ -90,6 +99,30 @@ export default function Home() {
             setDrawnPoints={setDrawnPoints}
             isTestMode={isTestMode}
           />
+          
+          {/* Debug overlay */}
+          {process.env.NODE_ENV !== 'production' && (
+            <div 
+              style={{
+                position: 'fixed',
+                bottom: 10,
+                right: 10,
+                backgroundColor: 'rgba(0, 0, 0, 0.7)',
+                color: 'white',
+                padding: '5px 10px',
+                borderRadius: '5px',
+                fontSize: '12px',
+                zIndex: 9999,
+                maxWidth: '300px',
+                wordBreak: 'break-all'
+              }}
+            >
+              <p>isTestMode: {isTestMode ? 'true' : 'false'}</p>
+              <p>currentFunction: {currentFunction || 'none'}</p>
+              <p>drawnPoints: {drawnPoints.length}</p>
+              <p>showActualFunction: {showActualFunction ? 'true' : 'false'}</p>
+            </div>
+          )}
         </div>
       </div>
     </>

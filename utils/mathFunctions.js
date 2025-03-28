@@ -38,17 +38,47 @@ export const evaluateFunction = (functionStr, xValues) => {
     
     console.log(`Processed function string: "${processedFunctionStr}"`);
     
-    // Validate the function by evaluating it at x=0 before compiling
+    // Validate the function by evaluating it at a few test points before compiling
+    // But don't throw an error during interactive typing, just log it
     try {
-      const scope = { x: 0 };
-      math.evaluate(processedFunctionStr, scope);
+      // Test at three points
+      const testPoints = [0, 1, -1];
+      let validationSuccessful = false;
+      
+      for (const testX of testPoints) {
+        try {
+          const scope = { x: testX };
+          const testResult = math.evaluate(processedFunctionStr, scope);
+          
+          // If we get at least one successful evaluation, consider it valid
+          if (testResult !== undefined && !isNaN(testResult)) {
+            validationSuccessful = true;
+            break;
+          }
+        } catch (pointError) {
+          // Just log individual point errors, but continue testing other points
+          console.warn(`Validation failed at x=${testX}: ${pointError.message}`);
+        }
+      }
+      
+      // If all test points failed, the function is likely invalid
+      if (!validationSuccessful) {
+        console.warn('Function validation failed at all test points');
+        // Don't throw yet - the user might be in the middle of typing
+      }
     } catch (validationError) {
       console.error('Function validation error:', validationError);
-      throw new Error(`Cannot parse function: ${validationError.message}`);
+      // Don't throw yet - they might be in the middle of typing
     }
     
     // Compile the function for efficiency
-    const compiledFunction = math.compile(processedFunctionStr);
+    let compiledFunction;
+    try {
+      compiledFunction = math.compile(processedFunctionStr);
+    } catch (compileError) {
+      console.error('Error compiling function:', compileError);
+      return xValues.map(() => null); // Return null for all values to avoid crashing
+    }
     
     // Evaluate for each x value
     const results = xValues.map(x => {
