@@ -77,37 +77,46 @@ const Sidebar = ({
       setErrorMessage('Please enter a function.');
       return;
     }
-
+    
+    // Reset any previous errors first
+    setErrorMessage('');
+    
     try {
-      // Test if function is valid with multiple test values
+      // Quick validation with just a few test values
       const testValues = [-1, 0, 1];
+      let validationPassed = false;
+      
       try {
-        // First validate the function with test values
         const results = evaluateFunction(functionInput, testValues);
         
-        // Check if we got valid results
-        const validResults = results.filter(r => r !== null && !isNaN(r) && isFinite(r));
-        if (validResults.length === 0) {
-          setErrorMessage('Function produces invalid results for all test values.');
+        // Consider validation successful if at least one valid result
+        validationPassed = results.some(r => r !== null && !isNaN(r) && isFinite(r));
+        
+        if (!validationPassed) {
+          setErrorMessage('Function produces invalid results. Please check your formula.');
           return;
         }
-        
-        // If we get here, function is valid
-        setErrorMessage('');
-        onFunctionSubmit(functionInput);
-        setIsTestMode(true);
-        console.log('Function submitted successfully:', functionInput);
       } catch (evalError) {
-        console.error('Function evaluation error:', evalError);
-        // Provide a more user-friendly error message
+        // Provide a concise, user-friendly error message
         const errorMsg = evalError.message.includes('Invalid function:') 
-          ? evalError.message 
-          : `Invalid function: ${evalError.message}`;
+          ? evalError.message.replace('Invalid function:', 'Error:')
+          : `Syntax error: ${evalError.message.split('.')[0]}`;
+        
         setErrorMessage(errorMsg);
+        return;
       }
+      
+      // If we reach here, the function is valid
+      console.log('Function validated successfully:', functionInput);
+      
+      // Submit function and enter test mode immediately
+      onFunctionSubmit(functionInput);
+      setIsTestMode(true);
+      
     } catch (err) {
+      // Handle any unexpected errors
       console.error('Unexpected error in function submission:', err);
-      setErrorMessage(`Error: ${err.message}`);
+      setErrorMessage('Something went wrong. Please try a different function.');
     }
   };
 

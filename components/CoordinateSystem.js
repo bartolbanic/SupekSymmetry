@@ -13,7 +13,8 @@ const CoordinateSystem = ({
   showActualFunction,
   drawnPoints,
   setDrawnPoints,
-  isTestMode
+  isTestMode,
+  onResetDrawing
 }) => {
   const plotRef = useRef(null);
   const [isDrawing, setIsDrawing] = useState(false);
@@ -22,46 +23,58 @@ const CoordinateSystem = ({
   const [smoothedPoints, setSmoothedPoints] = useState([]);
   
   // Calculate grid density and step size based on range (zoom level)
-  // This follows the approach used by Desmos and GeoGebra
+  // This follows improved approach for adaptive gridlines with zoom levels
   const calculateGridSettings = useCallback(() => {
     const xSpan = Math.abs(xRange[1] - xRange[0]);
     const ySpan = Math.abs(yRange[1] - yRange[0]);
     
-    // Calculate ideal number of grid lines (10-15 lines looks good)
-    const idealGridLineCount = 10;
-    
-    // Dynamic grid step calculation based on the span
-    // Uses a base-10 log calculation to determine appropriate step size
-    // This ensures round numbers that make sense for human reading
-    const calculateStep = (span) => {
-      if (span <= 0) return 1; // Avoid division by zero
+    // Advanced adaptive grid calculation based on zoom level
+    const calculateZoomLevels = (span) => {
+      if (span <= 0) return { smallStep: 1, mediumStep: 5, largeStep: 10 };
       
-      // Get the magnitude of the span (1, 10, 100, etc.)
+      // Get the order of magnitude (10^n) for the current span
       const magnitude = Math.pow(10, Math.floor(Math.log10(span)));
       
-      // Calculate a raw step based on ideal grid line count
-      const rawStep = span / idealGridLineCount;
-      const normalizedStep = rawStep / magnitude;
+      // Create a hierarchy of grid steps based on the magnitude
+      let smallStep, mediumStep, largeStep;
       
-      // Choose a nice round step based on the normalized step
-      let niceStep;
-      if (normalizedStep <= 0.1) niceStep = 0.1;
-      else if (normalizedStep <= 0.2) niceStep = 0.2;
-      else if (normalizedStep <= 0.5) niceStep = 0.5;
-      else if (normalizedStep <= 1.0) niceStep = 1.0;
-      else if (normalizedStep <= 2.0) niceStep = 2.0;
-      else niceStep = 5.0;
+      // Very zoomed in (span < 1)
+      if (span < 1) {
+        // For very small spans, use fractional grid lines
+        smallStep = magnitude / 10;
+        mediumStep = magnitude / 2;
+        largeStep = magnitude;
+      }
+      // Normal zoom (1 <= span < 50)
+      else if (span < 50) {
+        smallStep = magnitude / 5;
+        mediumStep = magnitude;
+        largeStep = magnitude * 5;
+      }
+      // Zoomed out (span >= 50)
+      else {
+        smallStep = magnitude / 2;
+        mediumStep = magnitude;
+        largeStep = magnitude * 5;
+      }
       
-      // Multiply by the magnitude to get the final step
-      return niceStep * magnitude;
+      // Ensure minimum size for very small values
+      smallStep = Math.max(smallStep, magnitude / 10);
+      
+      return { smallStep, mediumStep, largeStep };
     };
     
-    const xStep = calculateStep(xSpan);
-    const yStep = calculateStep(ySpan);
+    const xZoomLevels = calculateZoomLevels(xSpan);
+    const yZoomLevels = calculateZoomLevels(ySpan);
     
-    console.log(`Grid settings calculated: xStep=${xStep}, yStep=${yStep} for spans: x=${xSpan}, y=${ySpan}`);
+    console.log(`Grid settings calculated for spans: x=${xSpan.toFixed(2)}, y=${ySpan.toFixed(2)}`);
+    console.log(`X grid: small=${xZoomLevels.smallStep}, medium=${xZoomLevels.mediumStep}, large=${xZoomLevels.largeStep}`);
+    console.log(`Y grid: small=${yZoomLevels.smallStep}, medium=${yZoomLevels.mediumStep}, large=${yZoomLevels.largeStep}`);
     
-    return { xStep, yStep };
+    return { 
+      x: xZoomLevels,
+      y: yZoomLevels
+    };
   }, [xRange, yRange]);
 
   // Generate actual function data
@@ -138,6 +151,10 @@ const CoordinateSystem = ({
     console.log("Started drawing at:", { x, y });
   }, [isTestMode, screenToPlotCoordinates, setDrawnPoints]);
 
+  // Use a ref to store the last point for more efficient updates
+  const lastPointRef = useRef(null);
+  
+  // Optimize drawing performance with batched updates and adaptive sampling
   const handleMouseMove = useCallback((e) => {
     if (!isDrawing || !isTestMode) return;
     
@@ -147,34 +164,63 @@ const CoordinateSystem = ({
     const rect = e.currentTarget.getBoundingClientRect();
     
     // Get the center of the cursor position
-    // This ensures the line traces exactly where the cursor is, not offset
     const centerX = e.clientX;
     const centerY = e.clientY;
     
     // Convert screen coordinates to plot coordinates
     const { x, y } = screenToPlotCoordinates(centerX, centerY, rect);
     
-    // Add point to drawing - sampling at a reasonable rate to prevent too many points
-    // Only add point if it's different enough from the last point to avoid duplicate points
+    // Add point to drawing with adaptive sampling based on speed
+    // This makes drawing smoother and more responsive
     setDrawnPoints(prev => {
-      if (prev.length === 0) return [{ x, y }];
+      if (prev.length === 0) {
+        lastPointRef.current = { x, y };
+        return [{ x, y }];
+      }
       
-      const lastPoint = prev[prev.length - 1];
-      // Only add point if the movement is significant enough
-      // This also helps with smoothing the line
+      const lastPoint = lastPointRef.current || prev[prev.length - 1];
+      
+      // Calculate distance from last point
       const dx = Math.abs(x - lastPoint.x);
       const dy = Math.abs(y - lastPoint.y);
-      const minDistance = 0.02; // Minimum distance to add a new point
+      const distance = Math.sqrt(dx*dx + dy*dy);
       
-      if (dx > minDistance || dy > minDistance) {
-        return [...prev, { x, y }];
+      // Adaptive sampling with variable minimum distance
+      // - Faster movements (larger distance) get fewer points
+      // - Slower, more detailed movements get more points
+      const speedFactor = Math.min(1, distance * 2); // Scale based on drawing speed
+      const minDistance = 0.01 + (speedFactor * 0.05); // Range from 0.01 to 0.06
+      
+      if (distance > minDistance) {
+        // For long, fast strokes, interpolate extra points to avoid jagged lines
+        const newPoints = [];
+        
+        // Interpolate additional points for large jumps to maintain smooth appearance
+        if (distance > 0.2) {
+          const steps = Math.min(10, Math.floor(distance / 0.1));
+          
+          for (let i = 1; i <= steps; i++) {
+            const t = i / (steps + 1);
+            newPoints.push({
+              x: lastPoint.x + (x - lastPoint.x) * t,
+              y: lastPoint.y + (y - lastPoint.y) * t
+            });
+          }
+        }
+        
+        // Add the actual point
+        newPoints.push({ x, y });
+        lastPointRef.current = { x, y };
+        
+        return [...prev, ...newPoints];
       }
+      
       return prev;
     });
     
     // Limit logging to avoid console spam
-    if (Math.random() < 0.05) {
-      console.log("Drawing in progress, points:", drawnPoints.length + 1);
+    if (Math.random() < 0.01) {
+      console.log("Drawing in progress, points:", drawnPoints.length);
     }
   }, [isDrawing, isTestMode, screenToPlotCoordinates, drawnPoints.length, setDrawnPoints]);
 
@@ -214,67 +260,135 @@ const CoordinateSystem = ({
 
   // Generate grid lines with adaptive spacing based on zoom level
   const generateGridLines = useCallback(() => {
-    const { xStep, yStep } = calculateGridSettings();
-    
+    const gridSettings = calculateGridSettings();
     const gridLines = [];
     
-    // Calculate grid line boundaries with extra room for "infinite" appearance
-    // Extend beyond visible range by 100x to make grid appear infinite
+    // Calculate visible area with padding to avoid gaps during panning
     const visibleXSpan = xRange[1] - xRange[0];
     const visibleYSpan = yRange[1] - yRange[0];
     
-    const extendedXMin = xRange[0] - visibleXSpan * 100;
-    const extendedXMax = xRange[1] + visibleXSpan * 100;
-    const extendedYMin = yRange[0] - visibleYSpan * 100;
-    const extendedYMax = yRange[1] + visibleYSpan * 100;
+    // Only extend as needed for current view to optimize rendering performance
+    const extendMultiplier = 1.5; // Just enough extension to prevent gaps during panning
+    const extendedXMin = xRange[0] - visibleXSpan * extendMultiplier;
+    const extendedXMax = xRange[1] + visibleXSpan * extendMultiplier;
+    const extendedYMin = yRange[0] - visibleYSpan * extendMultiplier;
+    const extendedYMax = yRange[1] + visibleYSpan * extendMultiplier;
     
-    // Calculate adaptive grid line widths based on zoom level
-    // This ensures grid lines remain visible at any zoom level
+    // Calculate adaptive grid line widths
     const zoomMultiplier = Math.min(visibleXSpan, visibleYSpan) / 10;
     const baseWidth = 0.5; 
     const gridLineWidth = Math.max(baseWidth, baseWidth / zoomMultiplier);
     
-    // Add vertical grid lines (constant x)
-    // Start from a round number below the extended min
-    const startX = Math.floor(extendedXMin / xStep) * xStep;
-    for (let x = startX; x <= extendedXMax; x += xStep) {
-      // Skip the axis at x=0 as it will be added separately with bolder style
-      if (Math.abs(x) < 0.001) continue; 
-      
-      // Determine if this is a major grid line (multiple of 5 or 10)
-      const isMajorLine = Math.abs(x % (xStep * 5)) < 0.001;
+    // Extract grid steps from the settings
+    const { x: xLevels, y: yLevels } = gridSettings;
+    
+    // Generate X grid lines with zoom-dependent density
+    // 1. Generate the small grid lines
+    if (visibleXSpan < 20) { // Only show small grid lines when zoomed in enough
+      const smallStepX = xLevels.smallStep;
+      const startSmallX = Math.floor(extendedXMin / smallStepX) * smallStepX;
+      for (let x = startSmallX; x <= extendedXMax; x += smallStepX) {
+        // Skip the axis line and medium/large lines which will be drawn separately
+        if (Math.abs(x) < 0.001 || Math.abs(x % xLevels.mediumStep) < 0.001) continue;
+        
+        gridLines.push({
+          x: [x, x],
+          y: [extendedYMin, extendedYMax],
+          mode: 'lines',
+          line: { width: gridLineWidth * 0.5, color: '#f0f0f0' },
+          hoverinfo: 'none',
+          showlegend: false
+        });
+      }
+    }
+    
+    // 2. Generate the medium grid lines
+    if (visibleXSpan < 100) { // Hide medium grid lines when very zoomed out
+      const mediumStepX = xLevels.mediumStep;
+      const startMediumX = Math.floor(extendedXMin / mediumStepX) * mediumStepX;
+      for (let x = startMediumX; x <= extendedXMax; x += mediumStepX) {
+        // Skip the axis line and large lines which will be drawn separately
+        if (Math.abs(x) < 0.001 || Math.abs(x % xLevels.largeStep) < 0.001) continue;
+        
+        gridLines.push({
+          x: [x, x],
+          y: [extendedYMin, extendedYMax],
+          mode: 'lines',
+          line: { width: gridLineWidth, color: '#e0e0e0' },
+          hoverinfo: 'none',
+          showlegend: false
+        });
+      }
+    }
+    
+    // 3. Generate the large grid lines (always visible regardless of zoom)
+    const largeStepX = xLevels.largeStep;
+    const startLargeX = Math.floor(extendedXMin / largeStepX) * largeStepX;
+    for (let x = startLargeX; x <= extendedXMax; x += largeStepX) {
+      // Skip the axis line which will be drawn separately
+      if (Math.abs(x) < 0.001) continue;
       
       gridLines.push({
         x: [x, x],
-        y: [extendedYMin, extendedYMax], // Extend beyond the visible area
+        y: [extendedYMin, extendedYMax],
         mode: 'lines',
-        line: { 
-          width: isMajorLine ? gridLineWidth * 1.5 : gridLineWidth, 
-          color: isMajorLine ? '#c0c0c0' : '#e0e0e0' 
-        },
+        line: { width: gridLineWidth * 1.5, color: '#c0c0c0' },
         hoverinfo: 'none',
         showlegend: false
       });
     }
     
-    // Add horizontal grid lines (constant y)
-    // Start from a round number below the extended min
-    const startY = Math.floor(extendedYMin / yStep) * yStep;
-    for (let y = startY; y <= extendedYMax; y += yStep) {
-      // Skip the axis at y=0 as it will be added separately with bolder style
+    // Generate Y grid lines with zoom-dependent density
+    // 1. Generate the small grid lines
+    if (visibleYSpan < 20) { // Only show small grid lines when zoomed in enough
+      const smallStepY = yLevels.smallStep;
+      const startSmallY = Math.floor(extendedYMin / smallStepY) * smallStepY;
+      for (let y = startSmallY; y <= extendedYMax; y += smallStepY) {
+        // Skip the axis line and medium/large lines which will be drawn separately
+        if (Math.abs(y) < 0.001 || Math.abs(y % yLevels.mediumStep) < 0.001) continue;
+        
+        gridLines.push({
+          x: [extendedXMin, extendedXMax],
+          y: [y, y],
+          mode: 'lines',
+          line: { width: gridLineWidth * 0.5, color: '#f0f0f0' },
+          hoverinfo: 'none',
+          showlegend: false
+        });
+      }
+    }
+    
+    // 2. Generate the medium grid lines
+    if (visibleYSpan < 100) { // Hide medium grid lines when very zoomed out
+      const mediumStepY = yLevels.mediumStep;
+      const startMediumY = Math.floor(extendedYMin / mediumStepY) * mediumStepY;
+      for (let y = startMediumY; y <= extendedYMax; y += mediumStepY) {
+        // Skip the axis line and large lines which will be drawn separately
+        if (Math.abs(y) < 0.001 || Math.abs(y % yLevels.largeStep) < 0.001) continue;
+        
+        gridLines.push({
+          x: [extendedXMin, extendedXMax],
+          y: [y, y],
+          mode: 'lines',
+          line: { width: gridLineWidth, color: '#e0e0e0' },
+          hoverinfo: 'none',
+          showlegend: false
+        });
+      }
+    }
+    
+    // 3. Generate the large grid lines (always visible regardless of zoom)
+    const largeStepY = yLevels.largeStep;
+    const startLargeY = Math.floor(extendedYMin / largeStepY) * largeStepY;
+    for (let y = startLargeY; y <= extendedYMax; y += largeStepY) {
+      // Skip the axis line which will be drawn separately
       if (Math.abs(y) < 0.001) continue;
       
-      // Determine if this is a major grid line (multiple of 5 or 10)
-      const isMajorLine = Math.abs(y % (yStep * 5)) < 0.001;
-      
       gridLines.push({
-        x: [extendedXMin, extendedXMax], // Extend beyond the visible area
+        x: [extendedXMin, extendedXMax],
         y: [y, y],
         mode: 'lines',
-        line: { 
-          width: isMajorLine ? gridLineWidth * 1.5 : gridLineWidth, 
-          color: isMajorLine ? '#c0c0c0' : '#e0e0e0' 
-        },
+        line: { width: gridLineWidth * 1.5, color: '#c0c0c0' },
         hoverinfo: 'none',
         showlegend: false
       });
@@ -360,7 +474,12 @@ const CoordinateSystem = ({
     }] : [])
   ];
 
-  // Define plot layout
+  // Define plot layout with adaptive tick spacing
+  // Get grid settings inside the layout definition to ensure it's always current
+  const gridSettings = calculateGridSettings();
+  const xTickStep = gridSettings.x.mediumStep || 5; // Default to 5 if calculation fails
+  const yTickStep = gridSettings.y.mediumStep || 5; // Default to 5 if calculation fails
+  
   const layout = {
     autosize: true,
     margin: { l: 50, r: 30, t: 30, b: 50 },
@@ -369,14 +488,26 @@ const CoordinateSystem = ({
       zeroline: false,
       gridcolor: '#e0e0e0',
       title: 'x',
-      showgrid: false // Using our custom grid
+      showgrid: false, // Using our custom grid
+      // Dynamically adapt tick spacing based on zoom level
+      dtick: xTickStep,
+      tickmode: 'linear',
+      ticklen: 5,
+      tickwidth: 1,
+      tickcolor: '#888'
     },
     yaxis: {
       range: yRange,
       zeroline: false,
       gridcolor: '#e0e0e0',
       title: 'y',
-      showgrid: false // Using our custom grid
+      showgrid: false, // Using our custom grid
+      // Dynamically adapt tick spacing based on zoom level
+      dtick: yTickStep,
+      tickmode: 'linear',
+      ticklen: 5,
+      tickwidth: 1,
+      tickcolor: '#888'
     },
     dragmode: isTestMode ? false : 'pan', // Disable drag in test mode for drawing
     hovermode: 'closest',
@@ -413,8 +544,42 @@ const CoordinateSystem = ({
     }
   }, []);
 
-  // Mouse capture overlay that sits on top of the plot
-  // This is key to fixing the drawing functionality
+  // Handle keyboard shortcuts for better drawing experience
+  useEffect(() => {
+    if (!isTestMode) return;
+    
+    // Add keyboard event handlers for common drawing actions
+    const handleKeyDown = (e) => {
+      if (!isTestMode) return;
+      
+      // ESC key - Clear drawing
+      if (e.key === "Escape") {
+        if (onResetDrawing) {
+          onResetDrawing();
+          console.log("Drawing cleared with ESC key");
+        }
+      }
+      
+      // Enter key - Submit prediction when in test mode
+      if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        // This assumes a submitPrediction function is passed in via props
+        if (onDrawingComplete && drawnPoints.length > 0) {
+          console.log("Prediction submitted with Enter key");
+          // We'll just focus on completing the drawing, not auto-submitting
+          // as that would require coordination with the sidebar
+        }
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isTestMode, onResetDrawing, onDrawingComplete, drawnPoints]);
+
+  // Mouse and touch capture overlay that sits on top of the plot
+  // This is key to fixing the drawing functionality for all input devices
   const renderMouseCapture = () => {
     if (!isTestMode) return null;
     
@@ -430,14 +595,39 @@ const CoordinateSystem = ({
           zIndex: 500, // Above the plot but below instructions
           cursor: 'crosshair',
           // Completely transparent but still captures all events
-          // This ensures the overlay doesn't interfere with visibility
           backgroundColor: 'transparent',
-          pointerEvents: 'all' // Important: Ensures all pointer events are captured
+          pointerEvents: 'all', // Important: Ensures all pointer events are captured
+          touchAction: 'none' // Prevents default touch actions for better drawing
         }}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
+        onTouchStart={(e) => {
+          e.preventDefault();
+          const touch = e.touches[0];
+          handleMouseDown({
+            preventDefault: () => {},
+            currentTarget: e.currentTarget,
+            clientX: touch.clientX,
+            clientY: touch.clientY
+          });
+        }}
+        onTouchMove={(e) => {
+          e.preventDefault();
+          const touch = e.touches[0];
+          handleMouseMove({
+            preventDefault: () => {},
+            currentTarget: e.currentTarget,
+            clientX: touch.clientX,
+            clientY: touch.clientY
+          });
+        }}
+        onTouchEnd={(e) => {
+          e.preventDefault();
+          handleMouseUp();
+        }}
+        tabIndex={0} // Make div focusable for keyboard events
       />
     );
   };

@@ -98,6 +98,7 @@ export default function Home() {
             drawnPoints={drawnPoints}
             setDrawnPoints={setDrawnPoints}
             isTestMode={isTestMode}
+            onResetDrawing={handleResetDrawing}
           />
           
           {/* Debug overlay */}
